@@ -170,5 +170,7 @@ def handle_exception(e):
     logger.error(f"An unhandled exception occurred: {str(e)}", exc_info=True)
     return jsonify({"error": "An internal server error occurred"}), 500
 
+"""
 if __name__ == '__main__':
     app.run(debug=True)
+"""
