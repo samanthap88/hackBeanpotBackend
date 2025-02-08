@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Startup Investor Matcher</title>
+    <title>MyGovConnect - Benefits Finder</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -11,22 +11,12 @@
             margin: 0 auto;
             padding: 20px;
         }
-        h1 {
-            color: #333;
-        }
         form {
             display: flex;
             flex-direction: column;
         }
-        label, input, select, textarea {
+        input, select {
             margin-bottom: 10px;
-        }
-        button {
-            padding: 10px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            cursor: pointer;
         }
         #result {
             margin-top: 20px;
@@ -35,54 +25,64 @@
     </style>
 </head>
 <body>
-    <h1>Startup Investor Matcher</h1>
-    <form id="investorForm">
-        <label for="industry">Select Your Industry:</label>
-        <select id="industry" name="industry" required>
-            <option value="AI/Machine Learning">AI/Machine Learning</option>
-            <option value="FinTech">FinTech</option>
-            <option value="HealthTech">HealthTech</option>
-            <option value="EdTech">EdTech</option>
-            <option value="E-commerce">E-commerce</option>
-            <option value="Other">Other</option>
-        </select>
+    <h1>MyGovConnect Benefits Finder</h1>
 
-        <label for="stage">Select Your Funding Stage:</label>
-        <select id="stage" name="stage" required>
-            <option value="Seed">Seed</option>
-            <option value="Series A">Series A</option>
-            <option value="Series B">Series B</option>
-            <option value="Series C">Series C</option>
-            <option value="Growth">Growth</option>
-        </select>
+    <form id="benefitsForm">
+        <label for="age">Your Age:</label>
+        <input type="number" id="age" name="age" required min="0" max="120">
 
-        <label for="description">Briefly describe your startup:</label>
-        <textarea id="description" name="description" rows="4" required></textarea>
+        <label for="income">Annual Household Income ($):</label>
+        <input type="number" id="income" name="income" required min="0">
 
-        <label for="location">Enter your startup's location:</label>
+        <label for="householdSize">Number of People in Household:</label>
+        <input type="number" id="householdSize" name="householdSize" required min="1" max="20">
+
+        <label for="location">Your Location (City, State):</label>
         <input type="text" id="location" name="location" required>
 
-        <button type="submit">Find Matching Investors</button>
+        <label for="employment">Employment Status:</label>
+        <select id="employment" name="employment" required>
+            <option value="">Select your status</option>
+            <option value="Employed">Employed Full-Time</option>
+            <option value="Part-Time">Employed Part-Time</option>
+            <option value="Unemployed">Unemployed</option>
+            <option value="Student">Student</option>
+            <option value="Retired">Retired</option>
+            <option value="Disabled">Unable to Work</option>
+        </select>
+
+        <button type="submit">Find Available Benefits</button>
     </form>
+
+    <div id="loading" style="display: none;">
+        Searching for benefits... Please wait.
+    </div>
 
     <div id="result"></div>
 
     <script>
-        document.getElementById('investorForm').addEventListener('submit', function(e) {
+        document.getElementById('benefitsForm').addEventListener('submit', function(e) {
             e.preventDefault();
             const formData = new FormData(this);
-            console.log(formData.entries)
+            const loading = document.getElementById('loading');
+            const result = document.getElementById('result');
+
+            loading.style.display = 'block';
+            result.textContent = '';
+
             fetch('/find_investors', {
                 method: 'POST',
                 body: formData
             })
             .then(response => response.json())
             .then(data => {
-                document.getElementById('result').textContent = data.investors;
+                loading.style.display = 'none';
+                result.textContent = data.investors;  // Display raw response
             })
             .catch(error => {
                 console.error('Error:', error);
-                document.getElementById('result').textContent = 'An error occurred. Please try again.';
+                loading.style.display = 'none';
+                result.textContent = 'An error occurred. Please try again.';
             });
         });
     </script>

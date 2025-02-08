@@ -32,7 +32,6 @@ langchain.llm_cache = InMemoryCache()
 # Global variable to store the VectorStore
 VectorStore = None
 
-
 def create_and_save_vectorstore(file_path, save_path):
     embeddings = OpenAIEmbeddings(openai_api_key=api_key)
     text_splitter = RecursiveCharacterTextSplitter(
@@ -48,138 +47,128 @@ def create_and_save_vectorstore(file_path, save_path):
 
     vectorstore = FAISS.from_texts(texts, embedding=embeddings)
     vectorstore.save_local(save_path)
-    logger.info(f"VectorStore created and saved to {save_path}")
-
+    logger.info(f"Benefits database vectorstore created and saved to {save_path}")
 
 def get_or_create_vectorstore(file_path, save_path):
     if os.path.exists(save_path):
-        logger.info(f"Loading existing VectorStore from {save_path}")
+        logger.info(f"Loading existing benefits database from {save_path}")
         return FAISS.load_local(save_path, OpenAIEmbeddings(openai_api_key=api_key), allow_dangerous_deserialization=True)
     else:
-        logger.info("Creating new VectorStore")
+        logger.info("Creating new benefits database")
         create_and_save_vectorstore(file_path, save_path)
         return FAISS.load_local(save_path, OpenAIEmbeddings(openai_api_key=api_key), allow_dangerous_deserialization=True)
 
-
 def update_vectorstore():
     global VectorStore
-    logger.info("Updating VectorStore")
-    VectorStore = get_or_create_vectorstore("maininvestorbase.csv", "investor_vectorstore.faiss")
-
+    logger.info("Updating benefits database")
+    VectorStore = get_or_create_vectorstore("government_benefits.csv", "benefits_vectorstore.faiss")
 
 # Initialize VectorStore
-VectorStore = get_or_create_vectorstore("maininvestorbase.csv", "investor_vectorstore.faiss")
+VectorStore = get_or_create_vectorstore("government_benefits.csv", "benefits_vectorstore.faiss")
 
-# Schedule periodic updates
+# Schedule weekly updates to catch new programs
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=update_vectorstore, trigger="interval", days=7)
 scheduler.start()
-
 
 @app.route('/')
 def home():
     return render_template('index.html')
 
-
-@app.route('/find_investors', methods=['POST'])
+@app.route('/find_investors', methods=['POST'])  # keeping route name for compatibility
 def find_investors():
     global VectorStore
 
-    industry = request.form['industry']
-    stage = request.form['stage']
-    description = request.form['description']
+    # Get user details from form
+    age = request.form['age']
+    income = request.form['income']
+    household_size = request.form['householdSize']
     location = request.form['location']
+    employment = request.form['employment']
 
-    startup_details = f"""
-    Industry: {industry}
-    Funding Stage: {stage}
-    Description: {description}
+    # Calculate some helpful derived values
+    monthly_income = float(income) / 12
+    federal_poverty_level = 13590 + (4720 * (int(household_size) - 1))  # 2023 FPL
+    income_percentage_fpl = (float(income) / federal_poverty_level) * 100
+
+    user_profile = f"""
+    Age: {age}
+    Annual Income: ${income}
+    Monthly Income: ${monthly_income:.2f}
+    Household Size: {household_size}
     Location: {location}
-    """
-
-    json_structure = """
-    [
-    {
-      "Investor Name": "string",
-      "Fund Focus Areas": "string",
-      "Location": "string",
-      "Contact Details": {
-        "Partner Name": "string",
-        "Email": "string",
-        "Website": "string",
-        "Social Links": {
-          "Twitter": "string",
-          "LinkedIn": "string",
-          "Facebook": "string"
-        }
-      },
-      "Likelihood to Invest": "number %",
-      "Match Reason": "string"
-    }
-    ]
+    Employment Status: {employment}
+    Percentage of Federal Poverty Level: {income_percentage_fpl:.1f}%
     """
 
     prompt = f"""
-    As an AI-powered investor matching system, your task is to analyze the given startup information and provide a list of potential investors from the database who are most likely to invest in this startup. The startup details are as follows:
+    You are MyGovConnect, an expert AI assistant specializing in government benefits and assistance programs. Your mission is to help users find all government programs, grants, and services they may qualify for based on their profile:
 
-    {startup_details}
+    {user_profile}
 
-    Using the following investor data fields to evaluate matches:
-    - Investor Name
-    - Fund Type
-    - Website (if available)
-    - Fund Focus (Sectors)
-    - Partner Name
-    - Partner Email
-    - Location
-    - Twitter Link
-    - LinkedIn Link
-    - Facebook Link
+    Analyze the following categories of assistance:
+    1. Healthcare (e.g., Medicaid, CHIP, Medicare, ACA Subsidies)
+    2. Food & Nutrition (e.g., SNAP, WIC, School Meals)
+    3. Income Support (e.g., TANF, SSI, EITC)
+    4. Housing (e.g., Section 8, Public Housing, LIHEAP)
+    5. Education (e.g., FAFSA, Pell Grants, Head Start)
+    6. Employment (e.g., Unemployment, Job Training, Workforce Programs)
+    7. Senior & Disability Services (e.g., Social Security, Medicare, Paratransit)
+    8. Child Care (e.g., CCDF, Head Start, After School Programs)
 
-    You will use the following internal fields for context but do not display them to the user:
-    - Fund Description
-    - Portfolio Companies
-    - Number of Investments
-    - Number of Exits
-    - Preferred Investment Stages
+    For each matching program, provide:
+    1. Program name and brief description
+    2. Specific eligibility criteria met by the user
+    3. Estimated benefit amount (if calculable)
+    4. Application process and required documents
+    5. Local office or website to apply
+    6. Match confidence score (60-100%)
 
-    Evaluate the following key criteria when selecting potential investors:
-    1. **Industry alignment**: Ensure that the investor's fund focus (sectors) aligns with the startup's industry and market niche.
-    2. **Investment stage**: Match the startup's funding stage with the investor's preferred fund stage.
-    3. **Geographic proximity**: Consider location relevance, favoring investors who are in or focus on regions near the startup's location, but do not exclude global opportunities where geography is not a limiting factor.
-    4. **Portfolio companies fit**: If available, assess whether the startup aligns with the types of companies already in the investor's portfolio (similar markets, technologies, or sectors).
-    5. **Investment thesis alignment**: Look at the fund description to ensure that the investor's philosophy or thesis aligns with the startup's vision or mission, and explain why this investor would be a strategic match.
+    Format each program as a JSON object with these fields:
+    - "Investor Name": Program name
+    - "Fund Focus Areas": Main category (Healthcare, Food, etc.)
+    - "Location": Where program is available (State/County/City)
+    - "Contact Details": Application info and URLs
+    - "Likelihood to Invest": Match confidence score
+    - "Match Reason": Detailed eligibility explanation
 
-    Based on this data, provide a list of a minimum of **10-15 investors** who would be the best match for this startup. Return the result in the following JSON format for each investor:
+    Consider these factors:
+    - Age-specific programs (child, adult, senior)
+    - Income limits relative to Federal Poverty Level
+    - Household size impacts on eligibility
+    - State and local program variations
+    - Employment status requirements
+    - Emergency or temporary assistance options
+    - Program combinations and interactions
 
-    {json_structure}
+    Prioritize:
+    1. Programs with highest benefit value
+    2. Emergency assistance if needed
+    3. Programs with simplified application process
+    4. Local programs in user's area
+    5. Programs with highest match confidence
 
-    The match reason should prioritize the startup description when matching with an investor.
-
-    Please provide the results directly in JSON format without any additional explanations and make sure to start and end with square brackets.
+    Return only the JSON array without additional text. Include at least 10 highly relevant programs.
     """
 
     try:
-        docs = VectorStore.similarity_search(query=prompt, k=5)
-        llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.7, request_timeout=300)
+        docs = VectorStore.similarity_search(query=prompt, k=7)  # Increased k for better coverage
+        llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.5, request_timeout=300)  # Lower temperature for more consistent results
         chain = load_qa_chain(llm=llm, chain_type="stuff")
 
         with get_openai_callback() as cb:
             response = chain.run(input_documents=docs, question=prompt)
 
-        logger.info(f"Successfully processed request. Tokens used: {cb.total_tokens}")
-        return jsonify({"investors": response})
+        logger.info(f"Successfully processed benefits search. Tokens used: {cb.total_tokens}")
+        return jsonify({"investors": response})  # keeping response key for compatibility
     except Exception as e:
-        logger.error(f"An error occurred while processing the request: {str(e)}", exc_info=True)
-        return jsonify({"error": "An error occurred while processing your request"}), 500
-
+        logger.error(f"Error finding benefits: {str(e)}", exc_info=True)
+        return jsonify({"error": "An error occurred while searching for benefits"}), 500
 
 @app.errorhandler(Exception)
 def handle_exception(e):
     logger.error(f"An unhandled exception occurred: {str(e)}", exc_info=True)
     return jsonify({"error": "An internal server error occurred"}), 500
 
-"""
 if __name__ == '__main__':
     app.run(debug=True)
-"""
